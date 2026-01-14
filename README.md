@@ -9,3 +9,5 @@ Ideas for project:
 list of contributors:
 
 - Micael Raste
+
+- Severi Kerkkä
