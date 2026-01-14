@@ -11,3 +11,5 @@ list of contributors:
 - Micael Raste
 
 - Severi Kerkkä
+
+- Ville Valtasalo
