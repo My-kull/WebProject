@@ -13,3 +13,5 @@ list of contributors:
 - Severi Kerkkä
 
 - Ville Valtasalo
+
+- Veera Kouvo
