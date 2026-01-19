@@ -6,6 +6,8 @@ Ideas for project:
 
 - Portfolio Website
 
+- Website for browser games
+
 list of contributors:
 
 - Micael Raste
