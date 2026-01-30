@@ -1,0 +1,47 @@
+US-0101: Play page renders the game
+
+As a player, I want the game on a dedicated Play page, so I can focus.
+
+AC: Game mounts/unmounts cleanly when navigating; no console errors.
+
+US-0102: Start screen + controls help
+
+As a player, I want to see how to play before starting, so I’m not confused.
+
+AC: Shows controls (move/shoot/pause); “Start” begins gameplay.
+
+US-0103: Player movement
+
+As a player, I want to move the ship, so I can dodge.
+
+AC: Keyboard input works (A/D or arrows); ship stays in bounds; movement feels smooth.
+
+US-0104: Shooting
+
+As a player, I want to shoot, so I can defeat enemies.
+
+AC: Space shoots; fire rate limited; bullets removed off-screen.
+
+US-0105: Enemy spawns + movement
+
+As a player, I want enemies to appear and move, so there’s challenge.
+
+AC: Enemies spawn at interval; move downward (or pattern); despawn off-screen.
+
+US-0106: Collision rules
+
+As a player, I want hits to count, so the rules are consistent.
+
+AC: Bullet→enemy removes enemy + bullet; enemy→player triggers damage/game over.
+
+US-0107: Score + HUD
+
+As a player, I want score shown during play, so I can track progress.
+
+AC: HUD shows score and lives/health; score increases when enemies destroyed.
+
+US-0108: Game over + restart
+
+As a player, I want a clear game-over screen and restart, so I can retry fast.
+
+AC: Game over stops updates; shows final score; restart resets state.
