@@ -39,4 +39,4 @@
    
    Ville Valtasalo:
    
-   Veera Kouvo: 
+   Veera Kouvo: Practised new consepts for coding.
