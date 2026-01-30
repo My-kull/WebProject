@@ -1,3 +1,3 @@
 # Retrospective:
 
-We think that blaa bla balla bnla balls
+We were a little too excited on creating an actual product and skipped over the theory phase on accident.
