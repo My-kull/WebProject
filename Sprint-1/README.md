@@ -6,6 +6,7 @@
 
 
 2. Project Description:
+   
    The title of the project is GameSite
    
    Group members:
