@@ -9,3 +9,5 @@ Our goal also is to get started on the back-end.
 We will have to implement a proper channel for ideas and work status, that isn't discord, propably Figma.
 
 We have to convert some HTML into React components. Some things for example the Header is also a React component.
+
+We will also start implementing simple artificial intelligence features to the website.
