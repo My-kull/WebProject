@@ -1,0 +1,23 @@
+US-0201: Save last run + best score locally
+
+As a player, I want my best score saved, so I can beat it later.
+
+AC: After game over, best score updates if higher; persists across refresh.
+
+US-0202: Run history (local)
+
+As a player, I want to see recent runs, so I can track improvement.
+
+AC: Stores last N runs (e.g., 20) with score + timestamp; list renders in Scores page.
+
+US-0203: Clear scores
+
+As a player, I want to reset local scores, so I can start fresh.
+
+AC: “Clear data” button; confirms; wipes best + history.
+
+US-0204: Pause/resume
+
+As a player, I want to pause, so I can step away.
+
+AC: Esc/P pauses; HUD indicates paused; resume continues without state drift.
