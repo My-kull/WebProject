@@ -2,4 +2,8 @@
 
 Scrum roles will stay the same.
 
-etc.
+Our goal for sprint 2 is to get a working front-page and game-page front-end.
+
+Our goal also is to get started on the back-end.
+
+We will have to implement a proper channel for ideas and work status, that isn't discord, propably Figma.
