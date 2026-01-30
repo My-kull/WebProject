@@ -30,7 +30,7 @@
 
 
 5. Contributions
-6. 
+   
    Micael Raste: Made the starter for the project, including git repo, vite/react starter files and directories. Implemented TailwindCSS. Worked on components.
    
    Severi Kerkkä:
