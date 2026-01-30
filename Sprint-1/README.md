@@ -24,12 +24,13 @@
    The main functionality of our app is a games cataloque with simple games that are easy to get into.
 
 
-4. Scrum insight
+4. Scrum insight:
+   
    We haven't had many scrums and have been communicating our progress in discord.
    We will transition to doing actual scrums more often.
 
 
-5. Contributions
+6. Contributions
    
    Micael Raste: Made the starter for the project, including git repo, vite/react starter files and directories. Implemented TailwindCSS. Worked on components.
    
