@@ -35,7 +35,7 @@
    
    Micael Raste: Made the starter for the project, including git repo, vite/react starter files and directories. Implemented TailwindCSS. Worked on components.
    
-   Severi Kerkkä:
+   Severi Kerkkä: Made the vision and the preset shown in the presentation for the project
    
    Ville Valtasalo:
    
