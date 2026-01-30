@@ -37,6 +37,6 @@
    
    Severi Kerkkä: Made the vision and the preset shown in the presentation for the project
    
-   Ville Valtasalo:
+   Ville Valtasalo: Game idea, isometric sprites for graphics in said game
    
    Veera Kouvo: Practised new consepts for coding.
