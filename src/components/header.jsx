@@ -1,8 +1,8 @@
 import React from "react";
 
-const Header = () => {
+const Header = ({ className }) => {
   return (
-    <header className="bg-slate-800 text-white px-6 py-4">
+    <header className={`bg-slate-800 text-white px-6 py-4 ${className || ""}`}>
       <div className="max-w-6xl mx-auto flex items-center justify-between">
         <h1 className="text-2xl font-bold">My App</h1>
 
