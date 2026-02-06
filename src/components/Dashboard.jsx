@@ -5,7 +5,7 @@ import Controls from "./Controls";
 
 const Dashboard = () => {
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-900 to-slate-800 p-8">
+    <div className="min-h-screen bg-gradient-to-b from-slate-100 to-slate-200 dark:from-slate-900 dark:to-slate-800 p-8 transition-colors">
       <div className="max-w-7xl mx-auto mt-8">
         <div className="grid grid-cols-4 gap-4 h-screen">
           {/* Left Column */}
