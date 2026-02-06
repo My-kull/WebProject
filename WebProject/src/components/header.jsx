@@ -1,4 +1,4 @@
-import React from "react";
+import ThemeToggle from "./ThemeToggle";
 
 const Header = ({ className }) => {
   return (
@@ -7,7 +7,7 @@ const Header = ({ className }) => {
         <h1 className="text-2xl font-bold">My App</h1>
 
         <nav>
-          <ul className="flex gap-6">
+          <ul className="flex items-center gap-6">
             <li>
               <a href="/" className="hover:text-slate-300 transition-colors">
                 Home
@@ -36,6 +36,9 @@ const Header = ({ className }) => {
               >
                 Contact
               </a>
+            </li>
+            <li>
+              <ThemeToggle />
             </li>
           </ul>
         </nav>
