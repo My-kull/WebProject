@@ -5,6 +5,7 @@ import { screenToWorld, worldToScreen } from "./render/iso.js";
 import { circleHit } from "./physics/collision.js";
 import { drawDiamond, fillDiamond } from "./render/draw.js";
 import { Assets } from "./assets/Assets.js";
+import { QuestBroker } from "../ai/QuestBroker.js";
 
 
 // Core game loop, state, and rendering for the isometric demo.
@@ -39,6 +40,8 @@ export class Engine {
     this.state = {
       time: 0,
       score: 0,
+      levelUpFlash: 0,
+      inStartArea: true,
       gameOver: false,
       spawnTimer: 0,
       totalWaves: 10,
@@ -46,6 +49,34 @@ export class Engine {
       wave: 1,
       enemiesSpawnedInWave: 0,
       enemiesKilledInWave: 0,
+      questLog: [],
+      activeQuest: null,
+      questDialog: ["Press Q to ask the blacksmith for a quest."],
+      questStatus: "No active quest",
+      questProgress: 0,
+      questCompletedNotice: 0,
+    };
+    this.player = {
+      level: 1,
+      points: 0,
+      pointsToNextLevel: 300,
+    };
+    this.questBroker = new QuestBroker();
+    this.questRequestInFlight = false;
+    this.questRequestId = 0;
+    this.startButtonRect = { x: 0, y: 0, w: 0, h: 0 };
+    this.worldData = {
+      npcId: "npc_blacksmith",
+      regionId: "region_forge_district",
+      nearbyItems: [
+        { id: "item_iron_ore", name: "Iron Ore" },
+        { id: "item_coal", name: "Coal" },
+        { id: "item_ash_wood", name: "Ash Wood" },
+      ],
+      nearbyAreas: [
+        { id: "area_old_quarry", name: "Old Quarry" },
+        { id: "area_river_pass", name: "River Pass" },
+      ],
     };
 
     // Fixed timestep
@@ -164,8 +195,18 @@ export class Engine {
     if (this.state.gameOver) return;
 
     this.updateAnimations(dt);
+    this.state.levelUpFlash = Math.max(0, this.state.levelUpFlash - dt);
+    this.state.questCompletedNotice = Math.max(0, this.state.questCompletedNotice - dt);
 
     this.state.time += dt;
+
+    if (this.state.inStartArea) {
+      if (this.input.mouse.pressed && this.isInRect(this.input.mouse.x, this.input.mouse.y, this.startButtonRect)) {
+        this.state.inStartArea = false;
+        this.requestQuest();
+      }
+      return;
+    }
 
     // --- player control ---
     const p = this.playerId;
@@ -211,6 +252,10 @@ export class Engine {
       const [sx, sy] = norm(dx, dy);
 
       this.spawnBullet(t.x, t.y, sx, sy, "player", 0.16, 1);
+    }
+
+    if (this.input.wasPressed("KeyQ")) {
+      this.requestQuest();
     }
 
     // --- movement integration ---
@@ -339,7 +384,9 @@ export class Engine {
     // If enemy dies, score + wave progress
     if (h.hp <= 0) {
       if (this.world.c.Enemy.has(id)) {
-        this.state.score += 100;
+        const enemyType = this.world.c.Enemy.get(id)?.type ?? "unknown";
+        this.onEnemyDefeated(`enemy_${enemyType}`);
+        this.addPoints(100);
         this.state.enemiesKilledInWave += 1;
       }
       if (this.world.c.Player.has(id)) {
@@ -348,6 +395,154 @@ export class Engine {
       } else {
         this.world.destroy(id);
       }
+    }
+  }
+
+  onEnemyDefeated(enemyTypeId) {
+    const q = this.state.activeQuest;
+    if (!q || q.type !== "defeat") return;
+    const targetId = String(q.objective?.targetId ?? "").toLowerCase();
+    const defeatedId = String(enemyTypeId ?? "").toLowerCase();
+    const acceptsAnyEnemy = targetId === "" || targetId === "enemy_unknown" || targetId === "enemy_any";
+    if (!acceptsAnyEnemy && targetId !== defeatedId) return;
+
+    this.state.questProgress += 1;
+    if (this.state.questProgress >= q.objective.count) {
+      this.state.questProgress = q.objective.count;
+      this.addPoints(q.reward?.xp ?? 0);
+      this.state.questCompletedNotice = 2.2;
+      this.state.questStatus = `Completed: ${q.title}`;
+      this.state.questDialog = q?.dialog?.complete?.length
+        ? q.dialog.complete
+        : ["Target cleared. Report complete."];
+      this.state.activeQuest = null;
+    }
+  }
+
+  ensureCombatQuest(quest, context) {
+    const nearbyEnemy = context.nearbyEnemies?.[0];
+    const targetId = nearbyEnemy?.id ?? "enemy_swirler";
+    const targetName = nearbyEnemy?.name ?? "Swirler Enemy";
+    const countFromQuest = Number(quest?.objective?.count);
+    const count = Number.isFinite(countFromQuest) ? Math.max(1, Math.floor(countFromQuest)) : 3;
+    const rewardXp = Number(quest?.reward?.xp);
+    const rewardGold = Number(quest?.reward?.gold);
+
+    if (quest?.type === "defeat" && typeof quest?.objective?.targetId === "string") {
+      return {
+        ...quest,
+        objective: {
+          ...quest.objective,
+          targetId: quest.objective.targetId || targetId,
+          count,
+        },
+      };
+    }
+
+    const qid = `combat_${context.npcId}_${context.regionId}_${Date.now()}`;
+    return {
+      id: qid,
+      npcId: context.npcId,
+      title: `Bounty: Eliminate ${targetName}`,
+      type: "defeat",
+      objective: { targetId, count },
+      reward: {
+        xp: Number.isFinite(rewardXp) ? rewardXp : 80,
+        gold: Number.isFinite(rewardGold) ? rewardGold : 20,
+        itemId: null,
+      },
+      dialog: {
+        offer: [`Clean up the area.`, `Defeat ${count}x ${targetName}.`],
+        accept: [`Understood. Make it count.`],
+        complete: [`Good work. Bounty paid.`],
+      },
+    };
+  }
+
+  pointsForNextLevel(level) {
+    // Gentle linear curve: 300, 450, 600, ...
+    return 300 + Math.max(0, level - 1) * 150;
+  }
+
+  addPoints(amount) {
+    const points = Math.max(0, Math.floor(amount));
+    if (points <= 0) return;
+
+    this.state.score += points;
+    this.player.points += points;
+
+    while (this.player.points >= this.player.pointsToNextLevel) {
+      this.player.points -= this.player.pointsToNextLevel;
+      this.player.level += 1;
+      this.player.pointsToNextLevel = this.pointsForNextLevel(this.player.level);
+      this.state.levelUpFlash = 1.1;
+    }
+  }
+
+  buildQuestContext() {
+    const player = { level: this.player.level };
+    const playerTransform = this.world.c.Transform.get(this.playerId);
+    const enemyTypes = new Set();
+
+    for (const enemyId of this.world.view("Enemy", "Transform")) {
+      const et = this.world.c.Transform.get(enemyId);
+      const enemy = this.world.c.Enemy.get(enemyId);
+      if (!et || !playerTransform) continue;
+
+      const dx = et.x - playerTransform.x;
+      const dy = et.y - playerTransform.y;
+      if (len(dx, dy) > 16) continue;
+
+      enemyTypes.add(enemy?.type ?? "unknown");
+    }
+
+    const nearbyEnemies = Array.from(enemyTypes).map((type) => ({
+      id: `enemy_${type}`,
+      name: `${type[0]?.toUpperCase() ?? ""}${type.slice(1)} Enemy`,
+    }));
+    if (nearbyEnemies.length === 0) {
+      nearbyEnemies.push({ id: "enemy_swirler", name: "Swirler Enemy" });
+    }
+
+    return {
+      npcId: this.worldData.npcId,
+      regionId: this.worldData.regionId,
+      playerLevel: player.level,
+      questFocus: "combat",
+      nearbyEnemies,
+      nearbyItems: this.worldData.nearbyItems,
+      nearbyAreas: this.worldData.nearbyAreas,
+    };
+  }
+
+  async requestQuest() {
+    if (this.questRequestInFlight) return;
+
+    this.questRequestInFlight = true;
+    this.state.questStatus = "Fetching quest...";
+    try {
+      const context = this.buildQuestContext();
+      context.requestId = this.questRequestId++;
+      const brokerQuest = await this.questBroker.getQuest(context);
+      const quest = this.ensureCombatQuest(brokerQuest, context);
+      this.state.activeQuest = quest;
+      this.state.questProgress = 0;
+      this.state.questDialog = quest?.dialog?.offer?.length
+        ? quest.dialog.offer
+        : ["The blacksmith has work for you."];
+
+      this.state.questLog = [
+        quest,
+        ...this.state.questLog.filter((q) => q.id !== quest.id),
+      ].slice(0, 5);
+
+      this.state.questStatus = `Active: ${quest.title}`;
+    } catch (err) {
+      this.state.questDialog = ["Could not fetch quest right now."];
+      this.state.questStatus = "Quest broker unavailable";
+      console.warn("Quest request failed:", err);
+    } finally {
+      this.questRequestInFlight = false;
     }
   }
 
@@ -443,6 +638,11 @@ export class Engine {
     ctx.fillStyle = "#0b0f14";
     ctx.fillRect(0, 0, w, h);
 
+    if (this.state.inStartArea) {
+      this.drawStartArea();
+      return;
+    }
+
     // iso grid
     this.drawGrid(14);
 
@@ -481,6 +681,49 @@ export class Engine {
       ctx.fillText(`Score: ${this.state.score}`, w * 0.5, h * 0.52);
       ctx.restore();
     }
+  }
+
+  isInRect(x, y, rect) {
+    return x >= rect.x && x <= rect.x + rect.w && y >= rect.y && y <= rect.y + rect.h;
+  }
+
+  drawStartArea() {
+    const ctx = this.ctx;
+    const w = this.canvas.width;
+    const h = this.canvas.height;
+
+    const g = ctx.createLinearGradient(0, 0, 0, h);
+    g.addColorStop(0, "#1a2835");
+    g.addColorStop(1, "#0b1017");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, w, h);
+
+    ctx.fillStyle = "#d7e6f2";
+    ctx.textAlign = "center";
+    ctx.font = `bold ${Math.floor(h * 0.075)}px system-ui, sans-serif`;
+    ctx.fillText("Blacksmith Camp", w * 0.5, h * 0.3);
+    ctx.font = `500 ${Math.floor(h * 0.03)}px system-ui, sans-serif`;
+    ctx.fillText("Collect bounty quests and hunt enemy waves.", w * 0.5, h * 0.38);
+    ctx.fillText("Quest focus: defeat enemies and report kills.", w * 0.5, h * 0.43);
+
+    const bw = Math.min(280, Math.max(180, w * 0.28));
+    const bh = Math.min(64, Math.max(44, h * 0.09));
+    const bx = w * 0.5 - bw * 0.5;
+    const by = h * 0.56;
+    this.startButtonRect = { x: bx, y: by, w: bw, h: bh };
+
+    const hover = this.isInRect(this.input.mouse.x, this.input.mouse.y, this.startButtonRect);
+    ctx.fillStyle = hover ? "#f8c14f" : "#e0a832";
+    ctx.strokeStyle = "#5a4215";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.roundRect(bx, by, bw, bh, 12);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = "#1d1200";
+    ctx.font = `bold ${Math.floor(bh * 0.38)}px system-ui, sans-serif`;
+    ctx.fillText("Enter Game", w * 0.5, by + bh * 0.62);
   }
 
   // Draw isometric ground tiles around the camera.
@@ -607,12 +850,44 @@ export class Engine {
 
     ctx.save();
     ctx.fillStyle = "rgba(0,0,0,0.35)";
-    ctx.fillRect(10, 10, 240, 64);
+    ctx.fillRect(10, 10, 560, 200);
 
     ctx.fillStyle = "#e8eef5";
     ctx.font = "16px system-ui, sans-serif";
     ctx.fillText(`HP: ${hp}/${pHealth.max}`, 20, 34);
     ctx.fillText(`Score: ${this.state.score}`, 20, 56);
+    ctx.fillText(
+      `Level: ${this.player.level} (${this.player.points}/${this.player.pointsToNextLevel})`,
+      20,
+      78
+    );
+    ctx.fillText(this.state.questStatus, 20, 100);
+    ctx.fillText(this.state.activeQuest ? `Quest: ${this.state.activeQuest.title}` : "Quest: None", 20, 122);
+    if (this.state.activeQuest) {
+      const qCount = this.state.activeQuest.objective?.count ?? 1;
+      ctx.fillText(`Kills: ${this.state.questProgress}/${qCount}`, 350, 122);
+    }
+    ctx.fillText(`NPC says: ${this.state.questDialog[0] ?? "-"}`, 20, 144);
+    ctx.fillText(`Quest Log: ${this.state.questLog.length}`, 20, 166);
+    const recentQuestTitles = this.state.questLog.slice(0, 2).map((q) => q.title).join(" | ");
+    ctx.fillText(`Recent: ${recentQuestTitles || "-"}`, 20, 188);
+    ctx.fillText(`Press Q to get a quest`, 350, 188);
+
+    if (this.state.levelUpFlash > 0) {
+      ctx.fillStyle = "rgba(255, 225, 110, 0.95)";
+      ctx.font = "bold 20px system-ui, sans-serif";
+      ctx.fillText(`LEVEL UP! ${this.player.level}`, 290, 42);
+      ctx.fillStyle = "#e8eef5";
+      ctx.font = "16px system-ui, sans-serif";
+    }
+
+    if (this.state.questCompletedNotice > 0) {
+      ctx.fillStyle = "rgba(125, 232, 159, 0.96)";
+      ctx.font = "bold 18px system-ui, sans-serif";
+      ctx.fillText("QUEST COMPLETE", 365, 68);
+      ctx.fillStyle = "#e8eef5";
+      ctx.font = "16px system-ui, sans-serif";
+    }
 
     ctx.textAlign = "right";
     ctx.fillText(`${this.fps} fps`, w - 14, 26);
