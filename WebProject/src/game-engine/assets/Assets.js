@@ -1,17 +1,11 @@
 // Asset cache for images and sprite sheets.
 export class Assets {
   constructor() {
-    // Images by key and sheets by key.
     this.images = new Map();
     this.sheets = new Map();
-    // Optional grouping for sprite sheet namespaces (e.g. "player", "enemy").
     this.sheetSections = new Map();
   }
 
-  /**
-   * Loads an image and stores it under a key.
-   * Returns a Promise that resolves to the HTMLImageElement.
-   */
   loadImage(key, url) {
     if (this.images.has(key)) return Promise.resolve(this.images.get(key));
 
@@ -30,11 +24,6 @@ export class Assets {
     return this.images.get(key) || null;
   }
 
-  /**
-   * Loads a sprite sheet and stores frame rects.
-   * frameW/frameH are in pixels.
-   * options: { margin = 0, spacing = 0 }
-   */
   async loadSpriteSheet(key, url, frameW, frameH, options = {}) {
     if (this.sheets.has(key)) return this.sheets.get(key);
 
@@ -66,9 +55,6 @@ export class Assets {
     return this.sheets.get(key) || null;
   }
 
-  /**
-   * Returns { img, sx, sy, sw, sh } for a frame index, or null if missing.
-   */
   getFrameRect(key, frameIndex = 0) {
     const sheet = this.sheets.get(key);
     if (!sheet) return null;
@@ -83,10 +69,6 @@ export class Assets {
     };
   }
 
-  /**
-   * Loads a sprite sheet into a named section (e.g. "player", "enemy").
-   * Use getFrameRectSection(section, key, frameIndex) to access frames.
-   */
   async loadSpriteSheetSection(section, key, url, frameW, frameH, options = {}) {
     const sectionMap = this.sheetSections.get(section) || new Map();
     this.sheetSections.set(section, sectionMap);

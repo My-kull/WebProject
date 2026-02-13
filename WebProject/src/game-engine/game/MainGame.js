@@ -1,6 +1,6 @@
 import { Engine } from "../Engine.js";
 
- bootGame(canvas) {
+export function bootGame(canvas) {
   const engine = new Engine(canvas);
   engine.start();
   return engine;

@@ -8,7 +8,7 @@ import { Assets } from "./assets/Assets.js";
 import { QuestBroker } from "../ai/QuestBroker.js";
 
 
-// Core game loop, state, and rendering for the isometric demo.
+// Main game loop: update, ECS simulation, render, and quest state.
 export class Engine {
   constructor(canvas) {
     this.canvas = canvas;
@@ -84,39 +84,36 @@ export class Engine {
     this.last = performance.now();
     this.fixedDt = 1 / 60;
 
-    // debug
     this.fps = 0;
     this._fpsAcc = 0;
     this._fpsFrames = 0;
+    this._renderList = [];
 
     this.running = false;
     this._rafId = null;
   }
 
-  // Resize canvas backing store to match CSS size and DPR.
   resize() {
     const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
     this.canvas.width = Math.floor(this.canvas.clientWidth * dpr);
     this.canvas.height = Math.floor(this.canvas.clientHeight * dpr);
+    this.input?.updateCanvasMetrics?.();
   }
 
-  // Load assets and kick off the game loop.
   async start() {
     if (this.running) return;
     this.running = true;
     this.initGame();
 
-    // Optional preloads (won't crash if missing; you’ll just see shapes)
+    // Asset preload is optional; rendering falls back to primitives when missing.
     try {
       await this.assets.loadImage("player", "./src/assets/player.png");
       await this.assets.loadImage("enemy", "./src/assets/enemy.png");
       await this.assets.loadImage("bullet_player", "./src/assets/bullet_player.png");
       await this.assets.loadImage("bullet_enemy", "./src/assets/bullet_enemy.png");
-      // Example sprite sheets grouped by section
       // await this.assets.loadSpriteSheetSection("player", "main", "./src/assets/player_sheet.png", 32, 32);
       // await this.assets.loadSpriteSheetSection("enemy", "swirler", "./src/assets/enemy_sheet.png", 32, 32);
     } catch (e) {
-      // Keep running with fallback shapes
       console.warn(e.message);
     }
 
@@ -125,15 +122,12 @@ export class Engine {
   }
 
 
-  // Set up initial entities and wave state.
   initGame() {
-    // Player
     const p = this.world.create();
     this.world.c.Player.set(p, {});
     this.world.c.Transform.set(p, { x: 0, y: 6, z: 0 });
     this.world.c.Velocity.set(p, { x: 0, y: 0 });
     this.world.c.Collider.set(p, { r: 0.35 });
-    this.world.c.Render.set(p, { kind: "diamond", size: 0.8, bob: 0.0, hue: 195 });
     this.world.c.Health.set(p, { hp: 8, max: 8 });
     this.world.c.Shooter.set(p, { cool: 0, rate: 10, speed: 10, faction: "player" });
     this.playerId = p;
@@ -147,23 +141,18 @@ export class Engine {
       anchor: { x: 0.5, y: 1.0 },
     });
 
-
-    // Score entity (optional but shows ECS pattern)
     const s = this.world.create();
     this.world.c.Score.set(s, { value: 0 });
     this.scoreId = s;
 
-    // Start wave spawning immediately
     this.state.spawnTimer = 0;
   }
 
-  // Main RAF frame: fixed-step update, then render.
   frame(now) {
     if (!this.running) return;
     const dt = Math.min(0.05, (now - this.last) / 1000);
     this.last = now;
 
-    // fps estimate
     this._fpsAcc += dt;
     this._fpsFrames++;
     if (this._fpsAcc >= 0.25) {
@@ -190,10 +179,10 @@ export class Engine {
     if (this.input?.destroy) this.input.destroy();
   }
 
-  // Fixed-step simulation.
   update(dt) {
     if (this.state.gameOver) return;
 
+    // Player control and camera follow.
     this.updateAnimations(dt);
     this.state.levelUpFlash = Math.max(0, this.state.levelUpFlash - dt);
     this.state.questCompletedNotice = Math.max(0, this.state.questCompletedNotice - dt);
@@ -208,7 +197,6 @@ export class Engine {
       return;
     }
 
-    // --- player control ---
     const p = this.playerId;
     const t = this.world.c.Transform.get(p);
     const v = this.world.c.Velocity.get(p);
@@ -223,11 +211,10 @@ export class Engine {
     v.x = nx * speed;
     v.y = ny * speed;
 
-    // --- camera follows player ---
     this.camera.x = t.x;
     this.camera.y = t.y;
 
-    // --- shooting ---
+    // Combat input, movement, and AI.
     const shooter = this.world.c.Shooter.get(p);
     shooter.cool = Math.max(0, shooter.cool - dt);
 
@@ -237,7 +224,6 @@ export class Engine {
     if (wantsShoot && shooter.cool <= 0) {
       shooter.cool = 1 / shooter.rate;
 
-      // Aim via mouse world position (z=0 plane). If mouse is "too close", shoot forward.
       const aimW = screenToWorld(
         { x: this.input.mouse.x, y: this.input.mouse.y },
         this.camera,
@@ -258,19 +244,16 @@ export class Engine {
       this.requestQuest();
     }
 
-    // --- movement integration ---
     for (const id of this.world.view("Transform", "Velocity")) {
       const tr = this.world.c.Transform.get(id);
       const vel = this.world.c.Velocity.get(id);
       tr.x += vel.x * dt;
       tr.y += vel.y * dt;
 
-      // world bounds clamp
       tr.x = clamp(tr.x, this.bounds.minX, this.bounds.maxX);
       tr.y = clamp(tr.y, this.bounds.minY, this.bounds.maxY);
     }
 
-    // --- enemy AI (simple: drift + shoot at player) ---
     for (const id of this.world.view("Enemy", "Transform", "Velocity", "Shooter")) {
       const et = this.world.c.Transform.get(id);
       const ev = this.world.c.Velocity.get(id);
@@ -279,7 +262,6 @@ export class Engine {
 
       enemy.t += dt;
 
-      // move pattern: swirl + slight pursuit
       const toPx = t.x - et.x;
       const toPy = t.y - et.y;
       const [px, py] = norm(toPx, toPy);
@@ -291,7 +273,6 @@ export class Engine {
       ev.x = (px * 2.2 + sx) * 1.2;
       ev.y = (py * 2.2 + sy) * 1.2;
 
-      // shooting
       es.cool = Math.max(0, es.cool - dt);
       if (es.cool <= 0) {
         es.cool = 1 / es.rate;
@@ -300,18 +281,18 @@ export class Engine {
       }
     }
 
-    // --- bullets lifetime ---
+    // Projectile lifetime and collisions.
     for (const id of this.world.view("Bullet")) {
       const b = this.world.c.Bullet.get(id);
       b.life -= dt;
       if (b.life <= 0) this.world.destroy(id);
     }
 
-    // --- collisions: bullets hit stuff ---
-    // Note: O(n^2) but fine for a mini-engine. Upgrade with spatial hashing later.
     const bullets = this.world.view("Bullet", "Transform", "Collider");
     const enemies = this.world.view("Enemy", "Transform", "Collider", "Health");
     const player = this.playerId;
+    const pt = this.world.c.Transform.get(player);
+    const pc = this.world.c.Collider.get(player);
 
     for (const bid of bullets) {
       const bt = this.world.c.Transform.get(bid);
@@ -330,8 +311,6 @@ export class Engine {
           }
         }
       } else {
-        const pt = this.world.c.Transform.get(player);
-        const pc = this.world.c.Collider.get(player);
         if (circleHit(bt, bc.r, pt, pc.r)) {
           this.world.destroy(bid);
           this.damage(player, b.damage);
@@ -339,7 +318,7 @@ export class Engine {
       }
     }
 
-    // --- spawn logic (waves) ---
+    // Wave progression and game-over.
     if (this.state.wave <= this.state.totalWaves) {
       this.state.spawnTimer -= dt;
       if (this.state.spawnTimer <= 0 && this.state.enemiesSpawnedInWave < this.state.waveSize) {
@@ -349,10 +328,10 @@ export class Engine {
       }
     }
 
-    // Advance wave once all enemies in the wave are dead
+    const enemiesAlive = this.world.view("Enemy").length;
     if (
       this.state.enemiesKilledInWave >= this.state.waveSize &&
-      this.world.view("Enemy").length === 0
+      enemiesAlive === 0
     ) {
       this.state.wave += 1;
       this.state.enemiesSpawnedInWave = 0;
@@ -360,28 +339,24 @@ export class Engine {
       this.state.spawnTimer = 0;
     }
 
-    // Game over when player dies or after last wave is cleared
     const hp = this.world.c.Health.get(player)?.hp ?? 0;
     if (hp <= 0) this.state.gameOver = true;
     if (
       this.state.wave > this.state.totalWaves &&
-      this.world.view("Enemy").length === 0
+      enemiesAlive === 0
     ) {
       this.state.gameOver = true;
     }
   }
 
-  // Apply damage, handle deaths, and update score/wave.
   damage(id, amount) {
     const h = this.world.c.Health.get(id);
     if (!h) return;
     h.hp -= amount;
 
-    // little feedback: bump z for a frame via Render.bob
     const r = this.world.c.Render.get(id);
     if (r) r.bob = 0.22;
 
-    // If enemy dies, score + wave progress
     if (h.hp <= 0) {
       if (this.world.c.Enemy.has(id)) {
         const enemyType = this.world.c.Enemy.get(id)?.type ?? "unknown";
@@ -390,7 +365,6 @@ export class Engine {
         this.state.enemiesKilledInWave += 1;
       }
       if (this.world.c.Player.has(id)) {
-        // keep player entity so update/render don't crash
         h.hp = 0;
       } else {
         this.world.destroy(id);
@@ -460,7 +434,6 @@ export class Engine {
   }
 
   pointsForNextLevel(level) {
-    // Gentle linear curve: 300, 450, 600, ...
     return 300 + Math.max(0, level - 1) * 150;
   }
 
@@ -546,7 +519,6 @@ export class Engine {
     }
   }
 
-  // Sprite sheet animation progression.
   updateAnimations(dt) {
     for (const id of this.world.view("Render")) {
       const r = this.world.c.Render.get(id);
@@ -574,7 +546,6 @@ export class Engine {
     }
   }
 
-  // Assign animation settings to a renderable.
   setAnimation(id, anim) {
     const r = this.world.c.Render.get(id);
     if (!r) return;
@@ -583,7 +554,6 @@ export class Engine {
     r.frame = r.anim.start ?? 0;
   }
 
-  // Create a bullet entity.
   spawnBullet(x, y, dx, dy, faction, radius, damage) {
     const b = this.world.create();
     this.world.c.Render.set(b, {
@@ -599,10 +569,8 @@ export class Engine {
     this.world.c.Velocity.set(b, { x: dx * (faction === "player" ? 12 : 8), y: dy * (faction === "player" ? 12 : 8) });
     this.world.c.Collider.set(b, { r: radius });
     this.world.c.Bullet.set(b, { damage, faction, life: 2.2 });
-    this.world.c.Render.set(b, { kind: "dot", size: 0.35, bob: 0.0, hue: faction === "player" ? 55 : 0 });
   }
 
-  // Create an enemy entity.
   spawnEnemy() {
     const e = this.world.create();
     const side = Math.random() < 0.5 ? -1 : 1;
@@ -622,18 +590,16 @@ export class Engine {
     this.world.c.Transform.set(e, { x: ex, y: ey, z: 0 });
     this.world.c.Velocity.set(e, { x: 0, y: 0 });
     this.world.c.Collider.set(e, { r: 0.42 });
-    this.world.c.Render.set(e, { kind: "diamond", size: 0.9, bob: 0.0, hue: 345 });
     this.world.c.Health.set(e, { hp: 3, max: 3 });
     this.world.c.Shooter.set(e, { cool: rand(0.1, 0.6), rate: rand(0.8, 1.4), speed: 8, faction: "enemy" });
   }
 
-  // Render world, UI, and game-over overlay.
   render() {
     const ctx = this.ctx;
     const w = this.canvas.width;
     const h = this.canvas.height;
 
-    // background
+    // World pass: background, grid, sorted renderables, then HUD.
     ctx.clearRect(0, 0, w, h);
     ctx.fillStyle = "#0b0f14";
     ctx.fillRect(0, 0, w, h);
@@ -643,22 +609,29 @@ export class Engine {
       return;
     }
 
-    // iso grid
     this.drawGrid(14);
 
-    // gather renderables and depth-sort by screenY (painter's algorithm)
     const ids = this.world.view("Transform", "Render");
-    const list = ids.map((id) => {
+    const list = this._renderList;
+    list.length = 0;
+    for (let i = 0; i < ids.length; i += 1) {
+      const id = ids[i];
       const tr = this.world.c.Transform.get(id);
       const r = this.world.c.Render.get(id);
 
-      // decay bob (cheap "hit" feedback)
       if (r.bob > 0) r.bob = Math.max(0, r.bob - 0.02);
 
-      const pos = { x: tr.x, y: tr.y, z: tr.z + r.bob };
-      const s = worldToScreen(pos, this.camera, w, h, this.tileW, this.tileH, this.zScale);
-      return { id, s, tr, r };
-    });
+      const s = worldToScreen(
+        { x: tr.x, y: tr.y, z: tr.z + r.bob },
+        this.camera,
+        w,
+        h,
+        this.tileW,
+        this.tileH,
+        this.zScale
+      );
+      list.push({ id, s, r });
+    }
 
     list.sort((a, b) => a.s.y - b.s.y);
 
@@ -666,7 +639,6 @@ export class Engine {
       this.drawEntity(it);
     }
 
-    // UI
     this.drawUI();
 
     if (this.state.gameOver) {
@@ -726,32 +698,32 @@ export class Engine {
     ctx.fillText("Enter Game", w * 0.5, by + bh * 0.62);
   }
 
-  // Draw isometric ground tiles around the camera.
   drawGrid(radius) {
     const ctx = this.ctx;
     const w = this.canvas.width;
     const h = this.canvas.height;
+    const halfW = this.tileW * 0.5;
+    const halfH = this.tileH * 0.5;
+    const ox = w * 0.5 - (this.camera.x - this.camera.y) * halfW;
+    const oy = h * 0.5 - (this.camera.x + this.camera.y) * halfH;
+    ctx.globalAlpha = 0.18;
 
     for (let y = -radius; y <= radius; y++) {
       for (let x = -radius; x <= radius; x++) {
-        const pos = { x, y, z: 0 };
-        const s = worldToScreen(pos, this.camera, w, h, this.tileW, this.tileH, this.zScale);
-
-        // subtle checker
+        const sx = (x - y) * halfW + ox;
+        const sy = (x + y) * halfH + oy;
         const odd = (x + y) & 1;
-        ctx.globalAlpha = 0.18;
         ctx.strokeStyle = odd ? "#2a3644" : "#24303d";
-        drawDiamond(ctx, s.x, s.y, this.tileW * 0.5, this.tileH * 0.5);
+        drawDiamond(ctx, sx, sy, halfW, halfH);
       }
     }
     ctx.globalAlpha = 1.0;
   }
 
-  // Draw one entity (sprite or fallback shape) and its health bar.
   drawEntity({ id, s, r }) {
     const ctx = this.ctx;
 
-    // If a sprite (sheet or image) is configured and loaded, draw it
+    // Sprite path first; fall back to procedural shapes when assets are unavailable.
     if (r.spriteSheet || r.spriteSheetSection) {
       const frameIndex = r.frame ?? 0;
       const fr = r.spriteSheetSection
@@ -777,13 +749,9 @@ export class Engine {
     } else if (r.spriteKey) {
       const img = this.assets.getImage(r.spriteKey);
       if (img) {
-        // Anchor defaults to "feet on tile": bottom-center
         const ax = r.anchor?.x ?? 0.5;
         const ay = r.anchor?.y ?? 1.0;
 
-        // Decide draw size:
-        // If pixelScale is set, scale image by that factor.
-        // Otherwise scale by your existing sizePx logic.
         const sizePx = r.size * this.tileH;
         const scale = r.pixelScale ?? (sizePx / Math.max(img.width, img.height));
 
@@ -796,13 +764,11 @@ export class Engine {
         ctx.imageSmoothingEnabled = true;
         ctx.drawImage(img, dx, dy, dw, dh);
 
-        // Optional: health bar stays on top
         this.drawHealthBar(id, s, sizePx);
         return;
       }
     }
 
-    // Fallback: your existing primitive rendering
     const sizePx = r.size * (this.tileH);
     const fill = `hsl(${r.hue} 85% 60%)`;
     const stroke = `hsl(${r.hue} 85% 25%)`;
@@ -822,7 +788,6 @@ export class Engine {
     this.drawHealthBar(id, s, sizePx);
   }
 
-  // Render a health bar above entities that have Health.
   drawHealthBar(id, s, sizePx) {
     const ctx = this.ctx;
     const health = this.world.c.Health.get(id);
@@ -840,7 +805,6 @@ export class Engine {
     ctx.globalAlpha = 1.0;
   }
 
-  // Draw HUD (player HP, score, fps).
   drawUI() {
     const ctx = this.ctx;
     const w = this.canvas.width;

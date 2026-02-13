@@ -1,4 +1,4 @@
-// Tiny ECS world: entities are ids with component maps.
+// ECS world with component maps and simple multi-component queries.
 export class World {
   constructor() {
     this.nextId = 1;
@@ -17,30 +17,42 @@ export class World {
     };
   }
 
-  // Create a new entity id.
   create() {
     const id = this.nextId++;
     this.alive.add(id);
     return id;
   }
 
-  // Remove entity and all its components.
   destroy(id) {
     this.alive.delete(id);
     for (const m of Object.values(this.c)) m.delete(id);
   }
 
-  // Check if entity has all component types.
   has(id, ...names) {
     return names.every((n) => this.c[n].has(id));
   }
 
-  // Return ids that have all requested components.
+  // Query the smallest component map first to reduce per-frame scans.
   view(...names) {
-    // iterate entities that have all components
+    if (names.length === 0) return Array.from(this.alive);
+    if (names.length === 1) return Array.from(this.c[names[0]].keys());
+
+    let baseMap = this.c[names[0]];
+    for (let i = 1; i < names.length; i += 1) {
+      const m = this.c[names[i]];
+      if (m.size < baseMap.size) baseMap = m;
+    }
+
     const out = [];
-    for (const id of this.alive) {
-      if (this.has(id, ...names)) out.push(id);
+    for (const id of baseMap.keys()) {
+      let ok = true;
+      for (let i = 0; i < names.length; i += 1) {
+        if (!this.c[names[i]].has(id)) {
+          ok = false;
+          break;
+        }
+      }
+      if (ok && this.alive.has(id)) out.push(id);
     }
     return out;
   }
