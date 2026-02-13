@@ -1,0 +1,23 @@
+US-0301: Difficulty scaling
+
+As a player, I want the game to get harder over time, so it stays engaging.
+
+AC: Spawn rate and/or enemy speed increases with time/score; still fair.
+
+US-0302: Touch controls (optional)
+
+As a mobile player, I want touch controls, so I can play on phone.
+
+AC: On-screen left/right + shoot or drag-to-move; doesn’t break keyboard.
+
+US-0303: Basic effects
+
+As a player, I want hit feedback, so gameplay feels satisfying.
+
+AC: Explosion/flash or shake on hit; no major FPS drop.
+
+US-0304: Asset theming
+
+As a visitor, I want consistent visuals, so the site feels cohesive.
+
+AC: Shared fonts/colors; game UI matches site style.
