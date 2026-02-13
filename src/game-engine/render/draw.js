@@ -1,4 +1,4 @@
-// Outline an isometric tile diamond.
+// Shared canvas primitives used by the isometric renderer.
 export function drawDiamond(ctx, cx, cy, hw, hh) {
   ctx.beginPath();
   ctx.moveTo(cx, cy - hh);
@@ -9,7 +9,6 @@ export function drawDiamond(ctx, cx, cy, hw, hh) {
   ctx.stroke();
 }
 
-// Filled isometric tile diamond with stroke.
 export function fillDiamond(ctx, cx, cy, hw, hh) {
   ctx.beginPath();
   ctx.moveTo(cx, cy - hh);

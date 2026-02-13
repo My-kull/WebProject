@@ -1,7 +1,7 @@
 // server/questServer.js
 // Minimal quest API server.
 // Default: local generator (no LLM).
-// Optional: if USE_OLLAMA=1, will call Ollama at OLLAMA_URL with OLLAMA_MODEL.
+// Optional: set OLLAMA_URL to enable Ollama. Model is auto-detected if not set.
 
 import express from "express";
 
@@ -140,7 +140,7 @@ function generateQuestLocal(payload) {
 // ---------- optional Ollama ----------
 async function generateQuestWithOllama(payload) {
   const ollamaUrl = process.env.OLLAMA_URL || "http://127.0.0.1:11434";
-  const model = process.env.OLLAMA_MODEL || "qwen2.5-coder:7b"; // replace later
+  const model = await resolveOllamaModel(ollamaUrl);
   const level = Number(payload?.playerLevel) || 1;
 
   //short prompt, strict JSON, and we validate on the client.
@@ -184,12 +184,41 @@ nearbyAreas=${JSON.stringify(payload?.nearbyAreas ?? [])}
   return JSON.parse(text);
 }
 
+let cachedOllamaModel = "";
+let cachedOllamaUrl = "";
+
+async function resolveOllamaModel(ollamaUrl) {
+  const explicit = String(process.env.OLLAMA_MODEL || "").trim();
+  if (explicit) return explicit;
+  if (cachedOllamaModel && cachedOllamaUrl === ollamaUrl) return cachedOllamaModel;
+
+  try {
+    const tagsRes = await fetch(`${ollamaUrl}/api/tags`);
+    if (!tagsRes.ok) throw new Error(`tags HTTP ${tagsRes.status}`);
+    const tagsData = await tagsRes.json();
+    const firstName = String(tagsData?.models?.[0]?.name || "").trim();
+    if (!firstName) throw new Error("no models found in /api/tags");
+    cachedOllamaModel = firstName;
+    cachedOllamaUrl = ollamaUrl;
+    return firstName;
+  } catch (err) {
+    const fallback = "llama3.2:3b";
+    cachedOllamaModel = fallback;
+    cachedOllamaUrl = ollamaUrl;
+    console.warn(
+      `[questServer] Could not auto-detect Ollama model from ${ollamaUrl}; using fallback '${fallback}'.`,
+      err
+    );
+    return fallback;
+  }
+}
+
 // ---------- API ----------
 app.post("/api/quest", async (req, res) => {
   try {
     const payload = req.body ?? {};
 
-    const useOllama = process.env.USE_OLLAMA === "1";
+    const useOllama = Boolean(String(process.env.OLLAMA_URL || "").trim());
     const quest = useOllama
       ? await generateQuestWithOllama(payload)
       : generateQuestLocal(payload);
@@ -202,5 +231,10 @@ app.post("/api/quest", async (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`[questServer] listening on http://localhost:${PORT}`);
-  console.log(`[questServer] USE_OLLAMA=${process.env.USE_OLLAMA || "0"}`);
+  const ollamaUrl = String(process.env.OLLAMA_URL || "").trim();
+  if (ollamaUrl) {
+    console.log(`[questServer] Ollama enabled via OLLAMA_URL=${ollamaUrl}`);
+  } else {
+    console.log("[questServer] Ollama disabled (set OLLAMA_URL to enable)");
+  }
 });
