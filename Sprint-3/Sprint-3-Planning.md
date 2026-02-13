@@ -9,6 +9,8 @@ Proper home page
 
 Game ID`s for displaying different games on the game page
 
+Meaningful gameplay loop
+
 AI
 
 Login/registration page
