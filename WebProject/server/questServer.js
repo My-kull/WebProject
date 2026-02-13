@@ -143,7 +143,7 @@ async function generateQuestWithOllama(payload) {
   const model = process.env.OLLAMA_MODEL || "qwen2.5-coder:7b"; // replace later
   const level = Number(payload?.playerLevel) || 1;
 
-  // We still keep it “not fancy”: short prompt, strict JSON, and we validate on the client.
+  //short prompt, strict JSON, and we validate on the client.
   const prompt = `
 Return ONLY valid JSON (no markdown) with this schema:
 {
