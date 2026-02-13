@@ -4,9 +4,13 @@
 ## Goals
 
 ### Front End
+
 Proper home page
+
 Game ID`s for displaying different games on the game page
+
 AI
+
 Login/registration page
 
 
