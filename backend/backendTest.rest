@@ -1,0 +1,49 @@
+### GET users
+GET http://127.0.0.1:5173/api/users
+
+### POST user
+POST http://127.0.0.1:5173/api/users
+Content-Type: application/json
+
+{
+    "name": "John Doe",
+    "email": "john.doe@example.com",
+    "password": "password123",
+    "games": [
+        {
+            "gameID": "game1",
+            "score": 100,
+            "date": "2024-06-01T12:00:00Z"
+        },
+        {
+            "gameID": "game2",
+            "score": 150,
+            "date": "2024-06-02T12:00:00Z"
+        }
+    ]
+}
+
+### GET user by ID
+GET http://127.0.0.1:5173/api/users/{userId}
+
+### PUT user by ID
+PUT http://127.0.0.1:5173/api/users/{userId}
+Content-Type: application/json
+
+{
+    "name": "John Doe Updated",
+    "email": "john.doe.updated@example.com",
+    "password": "updatedpassword123",
+    "games": [
+        {
+            "gameID": "game1",
+            "score": 120,
+            "date": "2024-06-01T12:00:00Z"
+        },
+        {
+            "gameID": "game2",
+            "score": 180,
+            "date": "2024-06-02T12:00:00Z"
+        }
+    ]
+}
