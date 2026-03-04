@@ -1,13 +1,20 @@
 import React, { useEffect, useRef } from "react";
 import { bootGame } from "../game-engine/game/MainGame.js";
 
-const GameCanvas = () => {
+const GameCanvas = ({ onEnterGame, gameStarted = false }) => {
   const canvasRef = useRef(null);
   const engineRef = useRef(null);
+  const enteredRef = useRef(false);
 
   useEffect(() => {
     if (!canvasRef.current || engineRef.current) return;
-    const engine = bootGame(canvasRef.current);
+    const engine = bootGame(canvasRef.current, {
+      onEnterGame: () => {
+        if (enteredRef.current) return;
+        enteredRef.current = true;
+        onEnterGame?.();
+      },
+    });
     engineRef.current = engine;
 
     return () => {
@@ -17,7 +24,7 @@ const GameCanvas = () => {
   }, []);
 
   return (
-    <div className="col-span-2">
+    <div className={gameStarted ? "col-span-1" : "md:col-span-2 col-span-1"}>
       <div className="bg-gradient-to-br from-slate-200 to-slate-300 dark:from-slate-800 dark:to-slate-900 border-4 border-cyan-400 rounded-lg p-6 h-full flex flex-col gap-4 transition-colors">
         <div className="flex items-center justify-between gap-4">
           <div>

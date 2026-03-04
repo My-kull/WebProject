@@ -13,6 +13,7 @@ export class World {
       Bullet: new Map(),      // {damage, faction, life}
       Enemy: new Map(),       // {type, t}
       Player: new Map(),      // {}
+      Obstacle: new Map(),    // {type}
       Score: new Map(),       // {value}
     };
   }

@@ -10,9 +10,10 @@ import { QuestBroker } from "../ai/QuestBroker.js";
 
 // Main game loop: update, ECS simulation, render, and quest state.
 export class Engine {
-  constructor(canvas) {
+  constructor(canvas, options = {}) {
     this.canvas = canvas;
     this.ctx = canvas.getContext("2d");
+    this.onEnterGame = typeof options.onEnterGame === "function" ? options.onEnterGame : null;
     
     // Asset cache (images/sprites)
     this.assets = new Assets();
@@ -35,20 +36,26 @@ export class Engine {
     // Camera and world bounds
     this.camera = { x: 0, y: 0 };
     this.bounds = { minX: -12, maxX: 12, minY: -12, maxY: 12 };
+    this.baseWaveSize = 10;
+    this.baseEnemyHealth = 3;
+    this.baseEnemyDamage = 1;
 
     // Game state (waves, score, etc.)
     this.state = {
       time: 0,
       score: 0,
+      coins: 0,
       levelUpFlash: 0,
       inStartArea: true,
+      inShop: false,
       gameOver: false,
       spawnTimer: 0,
       totalWaves: 10,
-      waveSize: 10,
+      waveSize: this.baseWaveSize,
       wave: 1,
       enemiesSpawnedInWave: 0,
       enemiesKilledInWave: 0,
+      deathCount: 0,
       questLog: [],
       activeQuest: null,
       questDialog: ["Press Q to ask the blacksmith for a quest."],
@@ -65,6 +72,16 @@ export class Engine {
     this.questRequestInFlight = false;
     this.questRequestId = 0;
     this.startButtonRect = { x: 0, y: 0, w: 0, h: 0 };
+    this.shopUi = {
+      continueButton: { x: 0, y: 0, w: 0, h: 0 },
+      upgradeButtons: {},
+      notice: "",
+    };
+    this.playerWeapon = {
+      speedLevel: 0,
+      multiLevel: 0,
+      backfireLevel: 0,
+    };
     this.worldData = {
       npcId: "npc_blacksmith",
       regionId: "region_forge_district",
@@ -145,6 +162,9 @@ export class Engine {
     this.world.c.Score.set(s, { value: 0 });
     this.scoreId = s;
 
+    // Static geometry that blocks movement and projectiles.
+    this.spawnObstacles();
+
     this.state.spawnTimer = 0;
   }
 
@@ -192,7 +212,26 @@ export class Engine {
     if (this.state.inStartArea) {
       if (this.input.mouse.pressed && this.isInRect(this.input.mouse.x, this.input.mouse.y, this.startButtonRect)) {
         this.state.inStartArea = false;
+        this.onEnterGame?.();
         this.requestQuest();
+      }
+      return;
+    }
+
+    if (this.state.inShop) {
+      if (this.input.mouse.pressed) {
+        const mx = this.input.mouse.x;
+        const my = this.input.mouse.y;
+        if (this.isInRect(mx, my, this.shopUi.continueButton)) {
+          this.continueFromShop();
+        } else {
+          for (const [id, rect] of Object.entries(this.shopUi.upgradeButtons)) {
+            if (this.isInRect(mx, my, rect)) {
+              this.purchaseUpgrade(id);
+              break;
+            }
+          }
+        }
       }
       return;
     }
@@ -237,21 +276,33 @@ export class Engine {
       if (len(dx, dy) < 0.1) { dx = 0; dy = -1; }
       const [sx, sy] = norm(dx, dy);
 
-      this.spawnBullet(t.x, t.y, sx, sy, "player", 0.16, 1);
+      this.firePlayerShot(t.x, t.y, sx, sy);
     }
 
     if (this.input.wasPressed("KeyQ")) {
       this.requestQuest();
     }
 
+    const obstacles = this.world.view("Obstacle", "Transform", "Collider");
     for (const id of this.world.view("Transform", "Velocity")) {
       const tr = this.world.c.Transform.get(id);
       const vel = this.world.c.Velocity.get(id);
-      tr.x += vel.x * dt;
-      tr.y += vel.y * dt;
+      const col = this.world.c.Collider.get(id);
+      const nextX = clamp(tr.x + vel.x * dt, this.bounds.minX, this.bounds.maxX);
+      const nextY = clamp(tr.y + vel.y * dt, this.bounds.minY, this.bounds.maxY);
 
-      tr.x = clamp(tr.x, this.bounds.minX, this.bounds.maxX);
-      tr.y = clamp(tr.y, this.bounds.minY, this.bounds.maxY);
+      if (this.world.c.Bullet.has(id) || !col) {
+        tr.x = nextX;
+        tr.y = nextY;
+        continue;
+      }
+
+      if (!this.hitsObstacle(id, nextX, tr.y, col.r, obstacles)) {
+        tr.x = nextX;
+      }
+      if (!this.hitsObstacle(id, tr.x, nextY, col.r, obstacles)) {
+        tr.y = nextY;
+      }
     }
 
     for (const id of this.world.view("Enemy", "Transform", "Velocity", "Shooter")) {
@@ -277,7 +328,7 @@ export class Engine {
       if (es.cool <= 0) {
         es.cool = 1 / es.rate;
         const [bx, by] = norm(toPx, toPy);
-        this.spawnBullet(et.x, et.y, bx, by, "enemy", 0.14, 1);
+        this.spawnBullet(et.x, et.y, bx, by, "enemy", 0.14, this.enemyDamageValue());
       }
     }
 
@@ -290,6 +341,7 @@ export class Engine {
 
     const bullets = this.world.view("Bullet", "Transform", "Collider");
     const enemies = this.world.view("Enemy", "Transform", "Collider", "Health");
+    const bulletBlockers = this.world.view("Obstacle", "Transform", "Collider");
     const player = this.playerId;
     const pt = this.world.c.Transform.get(player);
     const pc = this.world.c.Collider.get(player);
@@ -298,6 +350,19 @@ export class Engine {
       const bt = this.world.c.Transform.get(bid);
       const bc = this.world.c.Collider.get(bid);
       const b = this.world.c.Bullet.get(bid);
+      let blocked = false;
+
+      for (const oid of bulletBlockers) {
+        const ot = this.world.c.Transform.get(oid);
+        const oc = this.world.c.Collider.get(oid);
+        if (!ot || !oc) continue;
+        if (circleHit(bt, bc.r, ot, oc.r)) {
+          this.world.destroy(bid);
+          blocked = true;
+          break;
+        }
+      }
+      if (blocked) continue;
 
       if (b.faction === "player") {
         for (const eid of enemies) {
@@ -340,7 +405,10 @@ export class Engine {
     }
 
     const hp = this.world.c.Health.get(player)?.hp ?? 0;
-    if (hp <= 0) this.state.gameOver = true;
+    if (hp <= 0) {
+      this.enterShop();
+      return;
+    }
     if (
       this.state.wave > this.state.totalWaves &&
       enemiesAlive === 0
@@ -362,6 +430,7 @@ export class Engine {
         const enemyType = this.world.c.Enemy.get(id)?.type ?? "unknown";
         this.onEnemyDefeated(`enemy_${enemyType}`);
         this.addPoints(100);
+        this.addCoins(10);
         this.state.enemiesKilledInWave += 1;
       }
       if (this.world.c.Player.has(id)) {
@@ -384,6 +453,7 @@ export class Engine {
     if (this.state.questProgress >= q.objective.count) {
       this.state.questProgress = q.objective.count;
       this.addPoints(q.reward?.xp ?? 0);
+      this.addCoins(200);
       this.state.questCompletedNotice = 2.2;
       this.state.questStatus = `Completed: ${q.title}`;
       this.state.questDialog = q?.dialog?.complete?.length
@@ -450,6 +520,166 @@ export class Engine {
       this.player.pointsToNextLevel = this.pointsForNextLevel(this.player.level);
       this.state.levelUpFlash = 1.1;
     }
+  }
+
+  addCoins(amount) {
+    const coins = Math.max(0, Math.floor(amount));
+    if (coins <= 0) return;
+    this.state.coins += coins;
+  }
+
+  enemyScale() {
+    return Math.pow(1.25, this.state.deathCount);
+  }
+
+  enemyCountScale() {
+    return Math.pow(2, this.state.deathCount);
+  }
+
+  scaledWaveSize() {
+    return Math.max(1, Math.floor(this.baseWaveSize * this.enemyCountScale()));
+  }
+
+  enemyHealthValue() {
+    return Math.max(1, Math.floor(this.baseEnemyHealth * this.enemyScale()));
+  }
+
+  enemyDamageValue() {
+    return Math.max(1, Math.ceil(this.baseEnemyDamage * this.enemyScale()));
+  }
+
+  rotateDir(dx, dy, radians) {
+    const c = Math.cos(radians);
+    const s = Math.sin(radians);
+    return [dx * c - dy * s, dx * s + dy * c];
+  }
+
+  playerProjectileSpeed() {
+    return 12 * (1 + this.playerWeapon.speedLevel * 0.22);
+  }
+
+  firePlayerShot(x, y, dx, dy) {
+    const speed = this.playerProjectileSpeed();
+    const frontCount = 1 + this.playerWeapon.multiLevel * 2;
+    const frontStep = 0.18;
+    const center = (frontCount - 1) * 0.5;
+
+    for (let i = 0; i < frontCount; i += 1) {
+      const offset = (i - center) * frontStep;
+      const [rx, ry] = this.rotateDir(dx, dy, offset);
+      const [nx, ny] = norm(rx, ry);
+      this.spawnBullet(x, y, nx, ny, "player", 0.16, 1, speed);
+    }
+
+    const backCount = this.playerWeapon.backfireLevel;
+    if (backCount > 0) {
+      const [bx, by] = norm(-dx, -dy);
+      const step = 0.22;
+      const backCenter = (backCount - 1) * 0.5;
+      for (let i = 0; i < backCount; i += 1) {
+        const offset = (i - backCenter) * step;
+        const [rx, ry] = this.rotateDir(bx, by, offset);
+        const [nx, ny] = norm(rx, ry);
+        this.spawnBullet(x, y, nx, ny, "player", 0.14, 1, speed);
+      }
+    }
+  }
+
+  clearCombatEntities() {
+    for (const id of this.world.view("Enemy")) this.world.destroy(id);
+    for (const id of this.world.view("Bullet")) this.world.destroy(id);
+  }
+
+  enterShop() {
+    if (this.state.inShop) return;
+    this.state.inShop = true;
+    this.state.deathCount += 1;
+    this.state.waveSize = this.scaledWaveSize();
+    this.shopUi.notice = `You were defeated. Enemy count x${this.enemyCountScale().toFixed(2)} active.`;
+    this.clearCombatEntities();
+  }
+
+  continueFromShop() {
+    const p = this.playerId;
+    const t = this.world.c.Transform.get(p);
+    const v = this.world.c.Velocity.get(p);
+    const h = this.world.c.Health.get(p);
+    const shooter = this.world.c.Shooter.get(p);
+
+    if (t) {
+      t.x = 0;
+      t.y = 6;
+      t.z = 0;
+    }
+    if (v) {
+      v.x = 0;
+      v.y = 0;
+    }
+    if (h) h.hp = h.max;
+    if (shooter) shooter.cool = 0;
+
+    this.clearCombatEntities();
+    this.state.inShop = false;
+    this.state.gameOver = false;
+    this.state.wave = 1;
+    this.state.enemiesSpawnedInWave = 0;
+    this.state.enemiesKilledInWave = 0;
+    this.state.spawnTimer = 0.1;
+    this.state.questProgress = 0;
+    this.state.activeQuest = null;
+    this.state.questStatus = "No active quest";
+    this.shopUi.notice = "";
+    this.requestQuest();
+  }
+
+  getUpgradeOptions() {
+    return [
+      {
+        id: "multi",
+        title: "Cone Spread",
+        level: this.playerWeapon.multiLevel,
+        maxLevel: 4,
+        cost: 140 + this.playerWeapon.multiLevel * 90,
+        desc: "Adds two forward projectiles per level.",
+      },
+      {
+        id: "speed",
+        title: "Muzzle Velocity",
+        level: this.playerWeapon.speedLevel,
+        maxLevel: 5,
+        cost: 110 + this.playerWeapon.speedLevel * 80,
+        desc: "Increases projectile speed by 22% per level.",
+      },
+      {
+        id: "backfire",
+        title: "Backfire",
+        level: this.playerWeapon.backfireLevel,
+        maxLevel: 3,
+        cost: 170 + this.playerWeapon.backfireLevel * 120,
+        desc: "Adds rear shots while firing.",
+      },
+    ];
+  }
+
+  purchaseUpgrade(id) {
+    const options = this.getUpgradeOptions();
+    const upgrade = options.find((u) => u.id === id);
+    if (!upgrade) return;
+
+    if (upgrade.level >= upgrade.maxLevel) {
+      this.shopUi.notice = `${upgrade.title} is already maxed.`;
+      return;
+    }
+    if (this.state.coins < upgrade.cost) {
+      this.shopUi.notice = `Need ${upgrade.cost} coins for ${upgrade.title}.`;
+      return;
+    }
+
+    this.state.coins -= upgrade.cost;
+    if (id === "multi") this.playerWeapon.multiLevel += 1;
+    if (id === "speed") this.playerWeapon.speedLevel += 1;
+    if (id === "backfire") this.playerWeapon.backfireLevel += 1;
+    this.shopUi.notice = `${upgrade.title} upgraded to Lv ${upgrade.level + 1}.`;
   }
 
   buildQuestContext() {
@@ -554,7 +784,44 @@ export class Engine {
     r.frame = r.anim.start ?? 0;
   }
 
-  spawnBullet(x, y, dx, dy, faction, radius, damage) {
+  hitsObstacle(moverId, x, y, radius, obstacleIds) {
+    for (const oid of obstacleIds) {
+      if (oid === moverId) continue;
+      const ot = this.world.c.Transform.get(oid);
+      const oc = this.world.c.Collider.get(oid);
+      if (!ot || !oc) continue;
+      if (circleHit({ x, y }, radius, ot, oc.r)) return true;
+    }
+    return false;
+  }
+
+  spawnObstacles() {
+    const ring = [
+      [-2, 1], [-1, 1], [0, 1], [1, 1], [2, 1],
+      [-6, -4], [-6, -3], [-6, -2], [-5, -2], [-4, -2],
+      [5, -5], [5, -4], [5, -3], [6, -4],
+      [2, 6], [3, 6], [4, 6], [5, 6],
+      [-3, 8], [-2, 8], [-1, 8],
+    ];
+    for (const [x, y] of ring) {
+      this.spawnObstacleEntity(x, y);
+    }
+  }
+
+  spawnObstacleEntity(x, y) {
+    const o = this.world.create();
+    this.world.c.Obstacle.set(o, { type: "rock" });
+    this.world.c.Transform.set(o, { x, y, z: 0 });
+    this.world.c.Collider.set(o, { r: 0.62 });
+    this.world.c.Render.set(o, {
+      kind: "diamond",
+      size: 1.1,
+      bob: 0.0,
+      hue: 30,
+    });
+  }
+
+  spawnBullet(x, y, dx, dy, faction, radius, damage, speedOverride = null) {
     const b = this.world.create();
     this.world.c.Render.set(b, {
       kind: "dot",
@@ -566,7 +833,8 @@ export class Engine {
     });
 
     this.world.c.Transform.set(b, { x, y, z: 0 });
-    this.world.c.Velocity.set(b, { x: dx * (faction === "player" ? 12 : 8), y: dy * (faction === "player" ? 12 : 8) });
+    const speed = speedOverride ?? (faction === "player" ? 12 : 8);
+    this.world.c.Velocity.set(b, { x: dx * speed, y: dy * speed });
     this.world.c.Collider.set(b, { r: radius });
     this.world.c.Bullet.set(b, { damage, faction, life: 2.2 });
   }
@@ -574,8 +842,15 @@ export class Engine {
   spawnEnemy() {
     const e = this.world.create();
     const side = Math.random() < 0.5 ? -1 : 1;
-    const ex = rand(this.bounds.minX, this.bounds.maxX);
-    const ey = side < 0 ? this.bounds.minY - 2 : this.bounds.maxY + 2;
+    let ex = rand(this.bounds.minX, this.bounds.maxX);
+    let ey = side < 0 ? this.bounds.minY - 2 : this.bounds.maxY + 2;
+    const obstacles = this.world.view("Obstacle", "Transform", "Collider");
+
+    for (let i = 0; i < 16; i++) {
+      if (!this.hitsObstacle(e, ex, ey, 0.42, obstacles)) break;
+      ex = rand(this.bounds.minX, this.bounds.maxX);
+      ey = side < 0 ? this.bounds.minY - 2 : this.bounds.maxY + 2;
+    }
 
     this.world.c.Render.set(e, {
       kind: "diamond",
@@ -590,7 +865,8 @@ export class Engine {
     this.world.c.Transform.set(e, { x: ex, y: ey, z: 0 });
     this.world.c.Velocity.set(e, { x: 0, y: 0 });
     this.world.c.Collider.set(e, { r: 0.42 });
-    this.world.c.Health.set(e, { hp: 3, max: 3 });
+    const enemyHp = this.enemyHealthValue();
+    this.world.c.Health.set(e, { hp: enemyHp, max: enemyHp });
     this.world.c.Shooter.set(e, { cool: rand(0.1, 0.6), rate: rand(0.8, 1.4), speed: 8, faction: "enemy" });
   }
 
@@ -606,6 +882,11 @@ export class Engine {
 
     if (this.state.inStartArea) {
       this.drawStartArea();
+      return;
+    }
+
+    if (this.state.inShop) {
+      this.drawShop();
       return;
     }
 
@@ -696,6 +977,100 @@ export class Engine {
     ctx.fillStyle = "#1d1200";
     ctx.font = `bold ${Math.floor(bh * 0.38)}px system-ui, sans-serif`;
     ctx.fillText("Enter Game", w * 0.5, by + bh * 0.62);
+  }
+
+  drawShop() {
+    const ctx = this.ctx;
+    const w = this.canvas.width;
+    const h = this.canvas.height;
+
+    const g = ctx.createLinearGradient(0, 0, 0, h);
+    g.addColorStop(0, "#151e2d");
+    g.addColorStop(1, "#0b1017");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, w, h);
+
+    const panelW = Math.min(840, Math.max(360, w * 0.88));
+    const panelH = Math.min(560, Math.max(360, h * 0.82));
+    const px = w * 0.5 - panelW * 0.5;
+    const py = h * 0.5 - panelH * 0.5;
+
+    ctx.fillStyle = "rgba(6,10,16,0.72)";
+    ctx.strokeStyle = "rgba(126,173,222,0.5)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.roundRect(px, py, panelW, panelH, 16);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.textAlign = "left";
+    ctx.fillStyle = "#e4eef8";
+    ctx.font = `bold ${Math.floor(panelH * 0.08)}px system-ui, sans-serif`;
+    ctx.fillText("Armory Shop", px + 24, py + 54);
+
+    ctx.font = `${Math.floor(panelH * 0.038)}px system-ui, sans-serif`;
+    ctx.fillStyle = "#9dc8ee";
+    ctx.fillText(`Coins: ${this.state.coins}`, px + 24, py + 86);
+
+    const upgrades = this.getUpgradeOptions();
+    const top = py + 110;
+    const rowH = Math.floor(panelH * 0.19);
+    this.shopUi.upgradeButtons = {};
+
+    for (let i = 0; i < upgrades.length; i += 1) {
+      const up = upgrades[i];
+      const ux = px + 20;
+      const uy = top + i * (rowH + 14);
+      const uw = panelW - 40;
+      const uh = rowH;
+      const maxed = up.level >= up.maxLevel;
+      const canAfford = this.state.coins >= up.cost;
+      const hover = this.isInRect(this.input.mouse.x, this.input.mouse.y, { x: ux, y: uy, w: uw, h: uh });
+
+      this.shopUi.upgradeButtons[up.id] = { x: ux, y: uy, w: uw, h: uh };
+
+      ctx.fillStyle = maxed ? "rgba(66, 82, 99, 0.78)" : (hover ? "rgba(50, 88, 120, 0.78)" : "rgba(35, 59, 82, 0.72)");
+      ctx.strokeStyle = canAfford || maxed ? "rgba(145, 201, 246, 0.55)" : "rgba(148, 93, 93, 0.6)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.roundRect(ux, uy, uw, uh, 12);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = "#eff7ff";
+      ctx.font = `bold ${Math.floor(uh * 0.24)}px system-ui, sans-serif`;
+      const costLabel = maxed ? "MAX" : `${up.cost} coins`;
+      ctx.fillText(`${up.title}  Lv ${up.level}/${up.maxLevel}`, ux + 16, uy + Math.floor(uh * 0.35));
+      ctx.font = `${Math.floor(uh * 0.2)}px system-ui, sans-serif`;
+      ctx.fillStyle = "#bfdbf4";
+      ctx.fillText(up.desc, ux + 16, uy + Math.floor(uh * 0.62));
+      ctx.fillStyle = canAfford || maxed ? "#ffe39f" : "#ffb2b2";
+      ctx.fillText(costLabel, ux + 16, uy + Math.floor(uh * 0.84));
+    }
+
+    const cbw = Math.min(280, panelW * 0.44);
+    const cbh = Math.min(66, panelH * 0.13);
+    const cbx = px + panelW - cbw - 20;
+    const cby = py + panelH - cbh - 16;
+    this.shopUi.continueButton = { x: cbx, y: cby, w: cbw, h: cbh };
+
+    const cHover = this.isInRect(this.input.mouse.x, this.input.mouse.y, this.shopUi.continueButton);
+    ctx.fillStyle = cHover ? "#ffd466" : "#e7b94f";
+    ctx.strokeStyle = "#5a4215";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.roundRect(cbx, cby, cbw, cbh, 12);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = "#201406";
+    ctx.font = `bold ${Math.floor(cbh * 0.42)}px system-ui, sans-serif`;
+    ctx.fillText("Continue", cbx + cbw * 0.28, cby + cbh * 0.62);
+
+    if (this.shopUi.notice) {
+      ctx.fillStyle = "#d8ebff";
+      ctx.font = `${Math.floor(panelH * 0.038)}px system-ui, sans-serif`;
+      ctx.fillText(this.shopUi.notice, px + 24, py + panelH - 26);
+    }
   }
 
   drawGrid(radius) {
@@ -808,49 +1183,89 @@ export class Engine {
   drawUI() {
     const ctx = this.ctx;
     const w = this.canvas.width;
+    const h = this.canvas.height;
 
     const pHealth = this.world.c.Health.get(this.playerId);
     const hp = Math.max(0, pHealth.hp);
 
+    const margin = 10;
+    const pad = 10;
+    const panelW = Math.max(0, Math.min(560, w - margin * 2));
+    const fontSize = Math.max(12, Math.min(16, Math.floor(h * 0.022)));
+    const lineH = fontSize + 6;
+    const panelHTarget = pad * 2 + lineH * 10;
+    const panelH = Math.max(0, Math.min(panelHTarget, h - margin * 2));
+    const panelX = margin;
+    const panelY = margin;
+    const leftX = panelX + pad;
+    const colSplit = panelX + Math.floor(panelW * 0.62);
+    const rightX = colSplit + 10;
+    const leftMaxW = Math.max(0, colSplit - leftX - 6);
+    const rightMaxW = Math.max(0, panelX + panelW - pad - rightX);
+
+    const fitText = (text, maxW) => {
+      const raw = String(text ?? "");
+      if (maxW <= 0) return "";
+      if (ctx.measureText(raw).width <= maxW) return raw;
+      let out = raw;
+      while (out.length > 1 && ctx.measureText(`${out}...`).width > maxW) {
+        out = out.slice(0, -1);
+      }
+      return `${out}...`;
+    };
+
+    let row = panelY + pad + fontSize;
+    const drawRow = (text, x, maxW) => {
+      if (row > panelY + panelH - pad) return false;
+      ctx.fillText(fitText(text, maxW), x, row);
+      row += lineH;
+      return true;
+    };
+
     ctx.save();
     ctx.fillStyle = "rgba(0,0,0,0.35)";
-    ctx.fillRect(10, 10, 560, 200);
+    ctx.fillRect(panelX, panelY, panelW, panelH);
 
     ctx.fillStyle = "#e8eef5";
-    ctx.font = "16px system-ui, sans-serif";
-    ctx.fillText(`HP: ${hp}/${pHealth.max}`, 20, 34);
-    ctx.fillText(`Score: ${this.state.score}`, 20, 56);
-    ctx.fillText(
+    ctx.font = `${fontSize}px system-ui, sans-serif`;
+    drawRow(`HP: ${hp}/${pHealth.max}`, leftX, leftMaxW);
+    drawRow(`Score: ${this.state.score}`, leftX, leftMaxW);
+    drawRow(`Coins: ${this.state.coins}`, leftX, leftMaxW);
+    drawRow(
       `Level: ${this.player.level} (${this.player.points}/${this.player.pointsToNextLevel})`,
-      20,
-      78
+      leftX,
+      leftMaxW
     );
-    ctx.fillText(this.state.questStatus, 20, 100);
-    ctx.fillText(this.state.activeQuest ? `Quest: ${this.state.activeQuest.title}` : "Quest: None", 20, 122);
+    drawRow(this.state.questStatus, leftX, leftMaxW);
+    drawRow(this.state.activeQuest ? `Quest: ${this.state.activeQuest.title}` : "Quest: None", leftX, leftMaxW);
     if (this.state.activeQuest) {
       const qCount = this.state.activeQuest.objective?.count ?? 1;
-      ctx.fillText(`Kills: ${this.state.questProgress}/${qCount}`, 350, 122);
+      ctx.fillText(fitText(`Kills: ${this.state.questProgress}/${qCount}`, rightMaxW), rightX, panelY + pad + fontSize + lineH * 5);
     }
-    ctx.fillText(`NPC says: ${this.state.questDialog[0] ?? "-"}`, 20, 144);
-    ctx.fillText(`Quest Log: ${this.state.questLog.length}`, 20, 166);
+    drawRow(`NPC says: ${this.state.questDialog[0] ?? "-"}`, leftX, leftMaxW);
+    drawRow(`Quest Log: ${this.state.questLog.length}`, leftX, leftMaxW);
     const recentQuestTitles = this.state.questLog.slice(0, 2).map((q) => q.title).join(" | ");
-    ctx.fillText(`Recent: ${recentQuestTitles || "-"}`, 20, 188);
-    ctx.fillText(`Press Q to get a quest`, 350, 188);
+    drawRow(`Recent: ${recentQuestTitles || "-"}`, leftX, leftMaxW);
+    ctx.fillText(fitText("Press Q to get a quest", rightMaxW), rightX, panelY + panelH - pad);
 
     if (this.state.levelUpFlash > 0) {
       ctx.fillStyle = "rgba(255, 225, 110, 0.95)";
-      ctx.font = "bold 20px system-ui, sans-serif";
-      ctx.fillText(`LEVEL UP! ${this.player.level}`, 290, 42);
+      ctx.font = `bold ${fontSize + 4}px system-ui, sans-serif`;
+      ctx.fillText(
+        fitText(`LEVEL UP! ${this.player.level}`, rightMaxW),
+        rightX,
+        panelY + pad + fontSize
+      );
       ctx.fillStyle = "#e8eef5";
-      ctx.font = "16px system-ui, sans-serif";
+      ctx.font = `${fontSize}px system-ui, sans-serif`;
     }
 
     if (this.state.questCompletedNotice > 0) {
       ctx.fillStyle = "rgba(125, 232, 159, 0.96)";
-      ctx.font = "bold 18px system-ui, sans-serif";
-      ctx.fillText("QUEST COMPLETE", 365, 68);
+      ctx.font = `bold ${fontSize + 2}px system-ui, sans-serif`;
+      ctx.fillText(fitText("QUEST COMPLETE", rightMaxW), rightX, panelY + pad + fontSize + lineH);
       ctx.fillStyle = "#e8eef5";
-      ctx.font = "16px system-ui, sans-serif";
+      ctx.font = `${fontSize}px system-ui, sans-serif`;
     }
 
     ctx.textAlign = "right";

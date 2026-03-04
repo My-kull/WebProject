@@ -1,13 +1,21 @@
-import React from "react";
+import React, { useState } from "react";
 import InfoBox from "./InfoBox";
 import GameCanvas from "./GameCanvas";
 import Controls from "./Controls";
 
 const Dashboard = () => {
+  const [gameStarted, setGameStarted] = useState(false);
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-100 to-slate-200 dark:from-slate-900 dark:to-slate-800 p-8 transition-colors">
       <div className="max-w-7xl mx-auto mt-8">
-        <div className="grid grid-cols-4 gap-4 h-screen">
+        <div
+          className={`grid gap-4 h-screen ${
+            gameStarted
+              ? "md:[grid-template-columns:15%_70%_15%] grid-cols-1"
+              : "grid-cols-1 md:grid-cols-4"
+          }`}
+        >
           {/* Left Column */}
           <div className="space-y-4">
             <InfoBox
@@ -27,7 +35,10 @@ const Dashboard = () => {
           </div>
 
           {/* Center Column - Game Area */}
-          <GameCanvas />
+          <GameCanvas
+            gameStarted={gameStarted}
+            onEnterGame={() => setGameStarted(true)}
+          />
 
           {/* Right Column */}
           <div className="space-y-4">
