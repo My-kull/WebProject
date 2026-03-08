@@ -7,7 +7,11 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "qwen3:setup": "bash scripts/qwen3_setup.sh",
+    "qwen3:pull": "ollama pull qwen3.5:2b",
+    "qwen3:run": "ollama run qwen3.5:2b",
+    "qwen3:speak": "bash scripts/qwen3_tts.sh"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.1.18",

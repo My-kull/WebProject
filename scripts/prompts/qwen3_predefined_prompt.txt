@@ -1,0 +1,25 @@
+Welcome to our project demo.
+
+What you are looking at is a browser-based game built using modern web technologies. The entire game runs inside a web application, combining JavaScript logic, a React interface, and a custom game engine designed specifically for this project.
+
+The core idea behind the game is simple: create a responsive top-down experience where the player can move, interact with the environment, and react to events happening around them in real time.
+
+Under the surface, however, there is quite a bit happening.
+
+The game engine handles player movement, object updates, and rendering. Each frame of the game updates the world state, processes inputs, and redraws the scene so that everything appears smooth and responsive to the player.
+
+Because the game runs in a browser, it also demonstrates how modern web technologies can be used for more than just traditional websites. With the right architecture, web applications can support interactive simulations and games that feel similar to native software.
+
+Another important part of this project is experimentation with artificial intelligence integration.
+
+Instead of using AI purely behind the scenes, we explored ways to integrate it directly into the experience. One example of this is the voice narration system you are hearing right now. The narration is generated using a text-to-speech system, allowing the game to include spoken dialogue without requiring recorded voice acting.
+
+This approach opens interesting possibilities. Dialogue, tutorials, or narrative elements can be generated dynamically, allowing the game to communicate information to the player in a more natural way.
+
+For the purposes of this demo, the goal is not just to present a finished game, but to demonstrate the underlying ideas: combining interactive web technologies with AI-assisted features to create more flexible and dynamic experiences.
+
+During the demo, we will show how the player can move through the environment, how the game world updates in real time, and how different systems interact with each other inside the application.
+
+While this is still a prototype, it represents a foundation that could be expanded much further. New mechanics, more complex environments, and additional AI features could all be added on top of the current system.
+
+Thank you for taking the time to watch this demonstration. We hope it gives a clear overview of how the project works and what possibilities it opens for future development.
