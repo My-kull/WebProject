@@ -1,5 +1,9 @@
 Welcome to our project demo.
 
+For this prototype we integrated a text-to-speech system for narration. The voice you're hearing right now is generated live by the system, so the game can present dialogue without pre-recorded voice acting
+
+The narration is intentionally synthetic, representing an in-game AI system communicating with the player
+
 What you are looking at is a browser-based game built using modern web technologies. The entire game runs inside a web application, combining JavaScript logic, a React interface, and a custom game engine designed specifically for this project.
 
 The core idea behind the game is simple: create a responsive top-down experience where the player can move, interact with the environment, and react to events happening around them in real time.

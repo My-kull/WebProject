@@ -48,17 +48,28 @@ export class QuestBroker {
     const allowedIds = makeIdSets(context);
 
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    const timeoutErr = new Error(`Quest request timed out after ${this.timeoutMs}ms`);
+    let timer = null;
+    const timeoutPromise = new Promise((_, reject) => {
+      timer = setTimeout(() => {
+        controller.abort();
+        reject(timeoutErr);
+      }, this.timeoutMs);
+    });
 
     try {
-      const resp = await fetch(`${this.baseUrl}/api/quest`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(context),
-        signal: controller.signal,
-      });
+      const resp = await Promise.race([
+        fetch(`${this.baseUrl}/api/quest`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(context),
+          signal: controller.signal,
+        }),
+        timeoutPromise,
+      ]);
 
-      const data = await resp.json();
+      if (!resp?.ok) throw new Error(`Quest API HTTP ${resp?.status ?? "unknown"}`);
+      const data = await resp.json().catch(() => ({}));
       const quest = data?.quest;
 
       const v = validateQuest(quest, allowedIds);

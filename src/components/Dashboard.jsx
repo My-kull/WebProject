@@ -2,9 +2,11 @@ import React, { useState } from "react";
 import InfoBox from "./InfoBox";
 import GameCanvas from "./GameCanvas";
 import Controls from "./Controls";
+import TutorialPanel from "./TutorialPanel";
 
 const Dashboard = () => {
   const [gameStarted, setGameStarted] = useState(false);
+  const [tutorialComplete, setTutorialComplete] = useState(false);
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-100 to-slate-200 dark:from-slate-900 dark:to-slate-800 p-8 transition-colors">
@@ -34,11 +36,21 @@ const Dashboard = () => {
             />
           </div>
 
-          {/* Center Column - Game Area */}
-          <GameCanvas
-            gameStarted={gameStarted}
-            onEnterGame={() => setGameStarted(true)}
-          />
+          {/* Center Column */}
+          {tutorialComplete ? (
+            <GameCanvas
+              gameStarted={gameStarted}
+              onEnterGame={() => setGameStarted(true)}
+            />
+          ) : (
+            <div className={gameStarted ? "col-span-1" : "md:col-span-2 col-span-1"}>
+              <TutorialPanel
+                active
+                className="h-full min-h-[520px]"
+                onComplete={() => setTutorialComplete(true)}
+              />
+            </div>
+          )}
 
           {/* Right Column */}
           <div className="space-y-4">

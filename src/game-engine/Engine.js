@@ -122,20 +122,26 @@ export class Engine {
     this.running = true;
     this.initGame();
 
-    // Asset preload is optional; rendering falls back to primitives when missing.
-    try {
-      await this.assets.loadImage("player", "./src/assets/player.png");
-      await this.assets.loadImage("enemy", "./src/assets/enemy.png");
-      await this.assets.loadImage("bullet_player", "./src/assets/bullet_player.png");
-      await this.assets.loadImage("bullet_enemy", "./src/assets/bullet_enemy.png");
-      // await this.assets.loadSpriteSheetSection("player", "main", "./src/assets/player_sheet.png", 32, 32);
-      // await this.assets.loadSpriteSheetSection("enemy", "swirler", "./src/assets/enemy_sheet.png", 32, 32);
-    } catch (e) {
-      console.warn(e.message);
-    }
-
     this.ready = true;
     this._rafId = requestAnimationFrame((t) => this.frame(t));
+    this.preloadAssets();
+  }
+
+  async preloadAssets() {
+    // Never block game start on asset requests; missing files can fall back to primitives.
+    const jobs = [
+      this.assets.loadImage("player", "./src/assets/player.png"),
+      this.assets.loadImage("enemy", "./src/assets/enemy.png"),
+      this.assets.loadImage("bullet_player", "./src/assets/bullet_player.png"),
+      this.assets.loadImage("bullet_enemy", "./src/assets/bullet_enemy.png"),
+    ];
+
+    const results = await Promise.allSettled(jobs);
+    for (const result of results) {
+      if (result.status === "rejected") {
+        console.warn(result.reason?.message || "Failed to load image asset.");
+      }
+    }
   }
 
 
@@ -976,7 +982,7 @@ export class Engine {
 
     ctx.fillStyle = "#1d1200";
     ctx.font = `bold ${Math.floor(bh * 0.38)}px system-ui, sans-serif`;
-    ctx.fillText("Enter Game", w * 0.5, by + bh * 0.62);
+    ctx.fillText("Start Game", w * 0.5, by + bh * 0.62);
   }
 
   drawShop() {
