@@ -2,6 +2,7 @@
 set -euo pipefail
 
 MODEL="qwen3.5:2b"
+NO_RUN="${QWEN_NO_RUN:-0}"
 
 install_ollama_if_missing() {
   if command -v ollama >/dev/null 2>&1; then
@@ -48,6 +49,11 @@ start_ollama_if_needed
 
 echo "Pulling model $MODEL..."
 ollama pull "$MODEL"
+
+if [[ "$NO_RUN" == "1" ]]; then
+  echo "Setup complete (QWEN_NO_RUN=1)."
+  exit 0
+fi
 
 echo "Launching model $MODEL..."
 exec ollama run "$MODEL"

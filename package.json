@@ -4,12 +4,16 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "bash scripts/qwen3_bootstrap.sh && vite",
-    "start": "bash scripts/qwen3_bootstrap.sh && vite",
+    "dev": "bash scripts/qwen3_setup_auto.sh --no-run && vite",
+    "start": "bash scripts/qwen3_setup_auto.sh --no-run && vite",
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
     "qwen3:setup": "bash scripts/qwen3_setup.sh",
+    "qwen3:setup:auto": "bash scripts/qwen3_setup_auto.sh",
+    "qwen3:setup:prompt": "bash scripts/qwen3_setup_prompt.sh",
+    "qwen3:setup:mac": "bash scripts/qwen3_setup_mac.sh",
+    "qwen3:setup:windows": "powershell -ExecutionPolicy Bypass -File scripts/qwen3_setup_windows.ps1",
     "qwen3:pull": "ollama pull qwen3.5:2b",
     "qwen3:run": "ollama run qwen3.5:2b",
     "qwen3:speak": "bash scripts/qwen3_tts.sh"
