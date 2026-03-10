@@ -17,7 +17,7 @@ function App() {
           showBack={!!currentGame}
         />
         {currentGame ? (
-          <Dashboard />
+          <Dashboard gameId={currentGame} />
         ) : (
           <HomePage onSelectGame={(id) => setCurrentGame(id)} />
         )}

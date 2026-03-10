@@ -3,8 +3,9 @@ import InfoBox from "./InfoBox";
 import GameCanvas from "./GameCanvas";
 import Controls from "./Controls";
 import TutorialPanel from "./TutorialPanel";
+import DoomGame from "./DoomGame";
 
-const Dashboard = () => {
+const IsoShmupDashboard = () => {
   const [gameStarted, setGameStarted] = useState(false);
   const [tutorialComplete, setTutorialComplete] = useState(false);
 
@@ -67,6 +68,26 @@ const Dashboard = () => {
       </div>
     </div>
   );
+};
+
+const DoomDashboard = () => {
+  return (
+    <div className="min-h-screen bg-gradient-to-b from-slate-100 to-slate-200 dark:from-slate-900 dark:to-slate-800 p-8 transition-colors">
+      <div className="max-w-7xl mx-auto mt-8">
+        <div className="grid gap-4 h-screen grid-cols-1">
+          <DoomGame />
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const Dashboard = ({ gameId }) => {
+  if (gameId === "doom-wasm") {
+    return <DoomDashboard />;
+  }
+
+  return <IsoShmupDashboard />;
 };
 
 export default Dashboard;

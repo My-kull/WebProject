@@ -10,6 +10,15 @@ const games = [
     tag: "Alpha",
     tags: ["Action", "Shooter"],
   },
+  {
+    id: "doom-wasm",
+    title: "DOOM",
+    description:
+      "Classic DOOM running in the browser via a WebAssembly-powered DOS emulator.",
+    icon: "👹",
+    tag: "Classic",
+    tags: ["FPS", "Retro"],
+  },
 ];
 
 const HomePage = ({ onSelectGame }) => {
