@@ -19,6 +19,15 @@ const games = [
     tag: "Classic",
     tags: ["FPS", "Retro"],
   },
+  {
+    id: "settlers",
+    title: "The Settlers",
+    description:
+      "Classic strategy game running locally via the js-dos WebAssembly DOS emulator. Provide your own game bundle.",
+    icon: "🏰",
+    tag: "Classic",
+    tags: ["RTS", "Retro"],
+  },
 ];
 
 const HomePage = ({ onSelectGame }) => {

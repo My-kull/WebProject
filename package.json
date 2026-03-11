@@ -20,7 +20,9 @@
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.1.18",
+    "emulators": "^8.3.9",
     "express": "^5.2.1",
+    "js-dos": "^8.3.20",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-router-dom": "^7.13.1",
