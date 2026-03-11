@@ -15,37 +15,36 @@ function loadJsDos() {
   });
 }
 
-function addJsDosCss() {
-  let link = document.getElementById("js-dos-css");
-  if (!link) {
-    link = document.createElement("link");
-    link.id = "js-dos-css";
-    link.rel = "stylesheet";
-    link.href = "/js-dos/js-dos.css";
-    document.head.appendChild(link);
-  }
-  return link;
-}
-
-function removeJsDosCss() {
-  const link = document.getElementById("js-dos-css");
-  if (link) link.remove();
-}
-
 const DosPlayer = ({ bundleUrl }) => {
-  const rootRef = useRef(null);
+  const containerRef = useRef(null);
+  const shadowRef = useRef(null);
   const instanceRef = useRef(null);
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    if (!rootRef.current || !bundleUrl) return;
+    if (!containerRef.current || !bundleUrl) return;
     let cancelled = false;
 
     loadJsDos()
       .then(() => {
-        if (cancelled || !rootRef.current) return;
-        addJsDosCss();
-        const instance = window.Dos(rootRef.current, {
+        if (cancelled || !containerRef.current) return;
+
+        // Create shadow DOM to isolate js-dos CSS from the rest of the page
+        if (!shadowRef.current) {
+          shadowRef.current = containerRef.current.attachShadow({ mode: "open" });
+
+          const style = document.createElement("link");
+          style.rel = "stylesheet";
+          style.href = "/js-dos/js-dos.css";
+          shadowRef.current.appendChild(style);
+        }
+
+        const dosRoot = document.createElement("div");
+        dosRoot.style.width = "100%";
+        dosRoot.style.height = "100%";
+        shadowRef.current.appendChild(dosRoot);
+
+        const instance = window.Dos(dosRoot, {
           url: bundleUrl,
           pathPrefix: "/js-dos/emulators/",
         });
@@ -61,7 +60,6 @@ const DosPlayer = ({ bundleUrl }) => {
         instanceRef.current.stop();
         instanceRef.current = null;
       }
-      removeJsDosCss();
     };
   }, [bundleUrl]);
 
@@ -73,7 +71,7 @@ const DosPlayer = ({ bundleUrl }) => {
     );
   }
 
-  return <div ref={rootRef} style={{ width: "100%", height: "100%" }} />;
+  return <div ref={containerRef} style={{ width: "100%", height: "100%" }} />;
 };
 
 export default DosPlayer;
