@@ -14,6 +14,14 @@ export default defineConfig({
   ],
   server: {
     proxy: {
+      "/api/auth": {
+        target: "http://localhost:4000",
+        changeOrigin: true,
+      },
+      "/api/user": {
+        target: "http://localhost:4000",
+        changeOrigin: true,
+      },
       "/api": {
         target: "http://localhost:5175",
         changeOrigin: true,

@@ -1,6 +1,5 @@
-require("dotenv").config();
 const express = require("express");
-const app = express();
+const cors = require("cors");
 const userRouter = require("./4-routes/userRouter");
 const authRouter = require("./4-routes/authRouter");
 const {
@@ -8,27 +7,20 @@ const {
   requestLogger,
   errorHandler,
 } = require("./5-middleware/customMiddleware");
-const connectDB = require("./1-config/db");
-const cors = require("cors");
+
+const app = express();
 
 // Middleware
 app.use(cors());
 app.use(express.json());
 app.use(requestLogger);
 
-connectDB();
-
 // Routes
 app.use("/api/auth", authRouter);
 app.use("/api/user", userRouter);
 
-// Custom middleware for unknown endpoints
+// Error handling
 app.use(unknownEndpoint);
 app.use(errorHandler);
 
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(
-    `Server is running on port ${PORT} at ${new Date().toLocaleTimeString()}`
-  );
-});
+module.exports = app;

@@ -1,13 +1,16 @@
-const mongoose = require('mongoose')
+const mongoose = require("mongoose");
 
 const connectDB = async () => {
   try {
-    const conn = await mongoose.connect("mongodb://localhost:27017/useeffect-demo")
-    console.log(`MongoDB Connected: ${conn.connection.host} at ${new Date().toLocaleTimeString()}`)
+    const uri = process.env.MONGO_URI || "mongodb://localhost:27017/webproject";
+    const conn = await mongoose.connect(uri);
+    console.log(
+      `MongoDB Connected: ${conn.connection.host} at ${new Date().toLocaleTimeString()}`
+    );
   } catch (error) {
-    console.log(error)
-    process.exit(1)
+    console.log(error);
+    process.exit(1);
   }
-}
+};
 
-module.exports = connectDB
+module.exports = connectDB;
